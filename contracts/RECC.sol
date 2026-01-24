@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 /*
     Reserve Economy Crypto Coin (RECC)
 
-    - Fixed supply: 100,000,000 RECC
+    - Fixed supply: 500,000,000 RECC
     - Decimals: 18
     - No minting
     - No burning
@@ -27,7 +27,7 @@ contract RECC {
     uint8  public constant decimals = 18;
 
     uint256 public constant totalSupply =
-        100_000_000 * 10 ** uint256(decimals);
+        500_000_000 * 10 ** uint256(decimals);
 
     /* =============================================================
                             ERC20 STORAGE
@@ -58,8 +58,8 @@ contract RECC {
     ============================================================= */
 
     constructor() {
-        uint256 supplyA = 21_000_000 * 10 ** uint256(decimals);
-        uint256 supplyB = 79_000_000 * 10 ** uint256(decimals);
+        uint256 supplyA = 250_000_000 * 10 ** uint256(decimals);
+        uint256 supplyB = 250_000_000 * 10 ** uint256(decimals);
 
         balanceOf[GENESIS_SIGNER_A] = supplyA;
         balanceOf[GENESIS_SIGNER_B] = supplyB;
