@@ -48,10 +48,10 @@ contract RECC {
     ============================================================= */
 
     address public constant GENESIS_SIGNER_A =
-        0x255E75e45800C59dba2543841Af57898165D9Cb5;
+        0xd04e85e065a8bbc67a1ce9f45864115b879d1e45;
 
     address public constant GENESIS_SIGNER_B =
-        0x5e43a5d02E461ECc3cE769596c367204093B355e;
+        0x6114aaade67e121e0d1d9ba52080ecffa54e383e;
 
     /* =============================================================
                               CONSTRUCTOR
