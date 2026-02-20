@@ -6,7 +6,7 @@ pragma solidity ^0.8.20;
 
     - Fixed supply: 500,000,000 RECC
     - Decimals: 18
-    - No minting
+    - No minting (public)
     - No burning
     - No admin
     - No owner
@@ -30,11 +30,47 @@ contract RECC {
         500_000_000 * 10 ** uint256(decimals);
 
     /* =============================================================
+                            ADDRESSES
+    ============================================================= */
+
+    address public constant ACCOUNT_A =
+        0x84196c3fdB7Cab79cFEf56465c593322fa3B03e3;
+
+    address public constant ACCOUNT_B =
+        0x255E75e45800C59dba2543841Af57898165D9Cb5;
+
+    /* =============================================================
+                        VESTING CONFIG
+    ============================================================= */
+
+    uint256 public constant VESTING_TOTAL =
+        199_000_000 * 10 ** 18;
+
+    uint256 public constant VESTING_MONTHS = 240;
+    uint256 public constant MONTH = 30 days;
+
+    uint256 public immutable startTime;
+    uint256 public released;
+
+    /* =============================================================
                             ERC20 STORAGE
     ============================================================= */
 
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+
+    /* =============================================================
+                            PERMIT STORAGE
+    ============================================================= */
+
+    mapping(address => uint256) public nonces;
+
+    bytes32 public immutable DOMAIN_SEPARATOR;
+
+    bytes32 private constant PERMIT_TYPEHASH =
+        keccak256(
+            "Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"
+        );
 
     /* =============================================================
                                 EVENTS
@@ -44,28 +80,71 @@ contract RECC {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
     /* =============================================================
-                        GENESIS DISTRIBUTION
-    ============================================================= */
-
-    address public constant GENESIS_SIGNER_A =
-        0xd04e85e065a8bbc67a1ce9f45864115b879d1e45;
-
-    address public constant GENESIS_SIGNER_B =
-        0x6114aaade67e121e0d1d9ba52080ecffa54e383e;
-
-    /* =============================================================
                               CONSTRUCTOR
     ============================================================= */
 
     constructor() {
-        uint256 supplyA = 250_000_000 * 10 ** uint256(decimals);
-        uint256 supplyB = 250_000_000 * 10 ** uint256(decimals);
 
-        balanceOf[GENESIS_SIGNER_A] = supplyA;
-        balanceOf[GENESIS_SIGNER_B] = supplyB;
+        startTime = block.timestamp;
 
-        emit Transfer(address(0), GENESIS_SIGNER_A, supplyA);
-        emit Transfer(address(0), GENESIS_SIGNER_B, supplyB);
+        uint256 supplyA = 300_000_000 * 10 ** uint256(decimals);
+        uint256 supplyB = 1_000_000 * 10 ** uint256(decimals);
+
+        balanceOf[ACCOUNT_A] = supplyA;
+        balanceOf[ACCOUNT_B] = supplyB;
+
+        emit Transfer(address(0), ACCOUNT_A, supplyA);
+        emit Transfer(address(0), ACCOUNT_B, supplyB);
+
+        uint256 chainId;
+        assembly {
+            chainId := chainid()
+        }
+
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256(bytes(name)),
+                keccak256(bytes("1")),
+                chainId,
+                address(this)
+            )
+        );
+    }
+
+    /* =============================================================
+                        MONTHLY RELEASE TO ACCOUNT B
+    ============================================================= */
+
+    function releasable() public view returns (uint256) {
+
+        if (block.timestamp < startTime) return 0;
+
+        uint256 monthsElapsed =
+            (block.timestamp - startTime) / MONTH;
+
+        if (monthsElapsed > VESTING_MONTHS) {
+            monthsElapsed = VESTING_MONTHS;
+        }
+
+        uint256 totalUnlocked =
+            (VESTING_TOTAL * monthsElapsed) / VESTING_MONTHS;
+
+        return totalUnlocked - released;
+    }
+
+    function release() external {
+
+        uint256 amount = releasable();
+        require(amount > 0, "Nothing to release");
+
+        released += amount;
+
+        balanceOf[ACCOUNT_B] += amount;
+
+        emit Transfer(address(0), ACCOUNT_B, amount);
     }
 
     /* =============================================================
@@ -83,16 +162,40 @@ contract RECC {
         return true;
     }
 
+    function increaseAllowance(address spender, uint256 added)
+        external
+        returns (bool)
+    {
+        allowance[msg.sender][spender] += added;
+        emit Approval(msg.sender, spender, allowance[msg.sender][spender]);
+        return true;
+    }
+
+    function decreaseAllowance(address spender, uint256 subtracted)
+        external
+        returns (bool)
+    {
+        uint256 current = allowance[msg.sender][spender];
+        require(current >= subtracted, "low allowance");
+
+        allowance[msg.sender][spender] = current - subtracted;
+
+        emit Approval(msg.sender, spender, allowance[msg.sender][spender]);
+        return true;
+    }
+
     function transferFrom(
         address from,
         address to,
         uint256 value
     ) external returns (bool) {
+
         uint256 allowed = allowance[from][msg.sender];
         require(allowed >= value, "RECC: allowance exceeded");
 
         allowance[from][msg.sender] = allowed - value;
         _transfer(from, to, value);
+
         return true;
     }
 
@@ -112,5 +215,68 @@ contract RECC {
         balanceOf[to]   += value;
 
         emit Transfer(from, to, value);
+    }
+
+    /* =============================================================
+                                PERMIT
+    ============================================================= */
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external {
+
+        require(deadline >= block.timestamp, "expired");
+
+        bytes32 digest =
+            keccak256(
+                abi.encodePacked(
+                    "\x19\x01",
+                    DOMAIN_SEPARATOR,
+                    keccak256(
+                        abi.encode(
+                            PERMIT_TYPEHASH,
+                            owner,
+                            spender,
+                            value,
+                            nonces[owner]++,
+                            deadline
+                        )
+                    )
+                )
+            );
+
+        address recovered =
+            ecrecover(digest, v, r, s);
+
+        require(recovered == owner, "invalid");
+
+        allowance[owner][spender] = value;
+
+        emit Approval(owner, spender, value);
+    }
+
+    /* =============================================================
+                        RESCUE (SAFETY)
+    ============================================================= */
+
+    function rescueTokens(address token, uint256 amount) external {
+
+        require(token != address(this), "cannot rescue RECC");
+
+        (bool success,) = token.call(
+            abi.encodeWithSignature(
+                "transfer(address,uint256)",
+                msg.sender,
+                amount
+            )
+        );
+
+        require(success, "rescue failed");
     }
 }
